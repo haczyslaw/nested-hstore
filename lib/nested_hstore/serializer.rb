@@ -43,6 +43,7 @@ module NestedHstore
 
     def deserialize(hash)
       return nil if hash.nil?
+      hash = string_to_hstore(hash) if hash.is_a?(String)
       raise 'Hstore value should be a hash' unless hash.is_a?(Hash)
       type_value = hash.delete(@type_key)
       type = @types_map_inverted[type_value]
@@ -68,9 +69,29 @@ module NestedHstore
 
     private
 
+    def string_to_hstore(string)
+      if string.nil?
+        nil
+      elsif String === string
+        Hash[string.scan(HstorePair).map { |k, v|
+          v = v.upcase == 'NULL' ? nil : v.gsub(/\A"(.*)"\Z/m,'\1').gsub(/\\(.)/, '\1')
+          k = k.gsub(/\A"(.*)"\Z/m,'\1').gsub(/\\(.)/, '\1')
+          [k, v]
+        }]
+      else
+        string
+      end
+    end
+
+    HstorePair = begin
+                   quoted_string = /"[^"\\]*(?:\\.[^"\\]*)*"/
+                   unquoted_string = /(?:\\.|[^\s,])[^\s=,\\]*(?:\\.[^\s=,\\]*|=[^,>])*/
+                   /(#{quoted_string}|#{unquoted_string})\s*=>\s*(#{quoted_string}|#{unquoted_string})/
+                 end
+
     def hash_to_hstore(type, hash)
       return {} if type == :hash && hash.blank?
-      
+
       hstore = hash.dup
       hstore.each do |k, v|
         if v.is_a?(Array) || v.is_a?(Hash)
